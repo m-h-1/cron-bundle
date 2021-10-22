@@ -25,7 +25,7 @@ class Configuration implements ConfigurationInterface
         $cronjobLogServiceClassNode->defaultNull();
 
         $cronjobCheckIntervalNode = new ScalarNodeDefinition('check_interval');
-        $cronjobCheckIntervalNode->defaultValue(1000000);
+        $cronjobCheckIntervalNode->defaultValue(1000);
 
         $cronjobExecutionTimeZoneNode = new ScalarNodeDefinition('execution_time_zone');
         $cronjobExecutionTimeZoneNode->defaultNull();
