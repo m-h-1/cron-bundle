@@ -181,9 +181,10 @@ mh1_cron:
 
 #### Prefix lock name
 
-per default symfony locks commands with the command-name.
+The symfony lock component uses the commands name (`app:run`) as the name for the lock.
 
-if you want to run multiple instances on the same system, you can use this parameter to prefix the name of the locks.
+If you want to run the same command in different deployments or folders on the same system you have to use 
+this parameter to prefix the name of the locks, e.g. `instance1:app:run`, `instance2:app:run`.
 
 ```yaml
 # config/packages/mh1_cron.yaml
