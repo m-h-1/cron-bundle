@@ -134,7 +134,7 @@ Add the command to crontab and replace PATH_TO_APPLICATION with the path to your
 mh1_cron:
     service: null # override job service with a custom service
     log_service: null # override logging service
-    check_interval: null # microseconds to wait between the checks if a process is running (must be greater than 10)
+    check_interval: 1000000 # microseconds to wait between the checks if a process is running (must be greater than 10)
     execution_time_zone: null # use a custom time zone for job scheduling, the default is the PHP default timezone
     lock_prefix: '' # use a prefix for cronjob logging, the default is empty string
 ```
