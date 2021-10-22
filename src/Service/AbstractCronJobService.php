@@ -141,7 +141,6 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
         }
 
         if (count($runningProcesses) > 0) {
-            // wait a second for the next check
             usleep($this->checkInterval);
             $this->checkRunning($runningProcesses);
         }
