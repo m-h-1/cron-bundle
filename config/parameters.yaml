@@ -3,3 +3,4 @@ parameters:
   cronjob.log.service: MH1\CronBundle\Service\DoctrineCronJobLogService
   cronjob.check_interval: 1000000
   cronjob.execution_time_zone: null
+  cronjob.lock_prefix: ''
