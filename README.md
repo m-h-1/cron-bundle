@@ -136,6 +136,7 @@ mh1_cron:
     log_service: null # override logging service
     check_interval: null # microseconds to wait between the checks if a process is running (must be greater than 10)
     execution_time_zone: null # use a custom time zone for job scheduling, the default is the PHP default timezone
+    lock_prefix: '' # use a prefix for cronjob logging, the default is empty string
 ```
 
 #### Custom job service
@@ -176,4 +177,16 @@ mh1_cron:
 # config/packages/mh1_cron.yaml
 mh1_cron:
     execution_time_zone: 'Europe/Berlin'
+```
+
+#### Prefix lock name
+
+per default symfony locks commands with the command-name.
+
+if you want to run multiple instances on the same system, you can use this parameter to prefix the name of the locks.
+
+```yaml
+# config/packages/mh1_cron.yaml
+mh1_cron:
+    lock_prefix: 'second_instance'
 ```
