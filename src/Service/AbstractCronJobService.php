@@ -50,16 +50,16 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
         int                        $checkInterval,
         ?string                    $executionTimeZone = null
     ) {
-        $this->cronJobLogService = $cronJobLogService;
-        $this->consolePath = $consolePath;
-        $this->checkInterval = $checkInterval * 1000;
-        $this->executionTimeZone = $executionTimeZone ?? date_default_timezone_get();
-
         if ($checkInterval <= 1) {
             throw new InvalidArgumentException(
                 'checkInterval must be greater than 1 millisecond to prevent errors'
             );
         }
+
+        $this->cronJobLogService = $cronJobLogService;
+        $this->consolePath = $consolePath;
+        $this->checkInterval = $checkInterval * 1000;
+        $this->executionTimeZone = $executionTimeZone ?? date_default_timezone_get();
     }
 
     /**
