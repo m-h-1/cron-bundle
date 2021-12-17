@@ -73,4 +73,31 @@ class CronCommandHelperServiceTest extends TestCase
 
         self::assertTrue($this->helperService->lockCommand('app:test'));
     }
+
+    public function testReleaseCommand(): void
+    {
+        /** @var LockInterface|MockObject $lock */
+        $lock = $this->createMock(LockInterface::class);
+        $lock->expects(self::once())
+             ->method('acquire')
+             ->willReturn(true)
+        ;
+        $lock->expects(self::once())
+             ->method('release')
+             ->willReturn(true)
+        ;
+
+        $this->lockMock
+            ->expects(self::once())
+            ->method('createLock')
+            ->with($this->helperService->getLockName('app:test'))
+            ->willReturn($lock)
+        ;
+
+        $this->helperService->releaseCommand();
+
+        $this->helperService->lockCommand('app:test');
+
+        $this->helperService->releaseCommand();
+    }
 }

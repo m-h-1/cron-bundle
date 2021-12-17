@@ -23,6 +23,11 @@ interface CronCommandHelperServiceInterface
     public function lockCommand(string $name): bool;
 
     /**
+     * @return void
+     */
+    public function releaseCommand(): void;
+
+    /**
      * @param string $name
      *
      * @return string

@@ -6,6 +6,7 @@ namespace MH1\CronBundle\Service;
 use MH1\CronBundle\Command\AbstractCronCommand;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Lock\LockFactory;
+use Symfony\Component\Lock\LockInterface;
 
 class CronCommandHelperService implements CronCommandHelperServiceInterface
 {
@@ -18,6 +19,11 @@ class CronCommandHelperService implements CronCommandHelperServiceInterface
      * @var LockFactory
      */
     private $lockFactory;
+
+    /**
+     * @var LockInterface
+     */
+    private $lock;
 
     public function __construct(LockFactory $lockFactory, string $lockPrefix = '')
     {
@@ -40,7 +46,20 @@ class CronCommandHelperService implements CronCommandHelperServiceInterface
      */
     public function lockCommand(string $name): bool
     {
-        return $this->lockFactory->createLock($this->getLockName($name))->acquire();
+        $this->lock = $this->lockFactory->createLock($this->getLockName($name));
+        return $this->lock->acquire();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function releaseCommand(): void
+    {
+        if ($this->lock === null) {
+            return;
+        }
+
+        $this->lock->release();
     }
 
     /**
