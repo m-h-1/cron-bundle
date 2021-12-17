@@ -82,6 +82,7 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
         foreach ($cronJobs as $cronJob) {
             $log = $this->cronJobLogService->logStart($cronJob);
 
+            /** @var Process<callable> $process */
             $process = $this->createProcess($cronJob);
             try {
                 $process->start();
@@ -98,7 +99,7 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
     /**
      * @param CronJobInterface $cronJob
      *
-     * @return Process<callable>
+     * @return Process
      */
     public function createProcess(CronJobInterface $cronJob): Process
     {
