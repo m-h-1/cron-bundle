@@ -104,7 +104,7 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
     public function createProcess(CronJobInterface $cronJob): Process
     {
         $processParts = [];
-        if ($this->phpExecutablePath !== null) {
+        if ($this->phpExecutablePath !== null && $this->phpExecutablePath !== '') {
             $processParts[] = $this->phpExecutablePath;
         }
 
