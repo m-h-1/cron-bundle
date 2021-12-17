@@ -13,7 +13,14 @@ interface CronCommandHelperServiceInterface
      *
      * @return int
      */
-    public function commandIsLocked(OutputInterface $output, string $name): int;
+    public function trackCommandIsLocked(OutputInterface $output, string $name): int;
+
+    /**
+     * @param string $name
+     *
+     * @return bool
+     */
+    public function lockCommand(string $name): bool;
 
     /**
      * @param string $name
