@@ -49,6 +49,8 @@ abstract class AbstractCronJobService implements CronJobServiceInterface, CronJo
      */
     private $phpExecutablePath;
 
+    private ?float $processTimeout = null;
+
     /**
      * @param CronJobLogServiceInterface $cronJobLogService
      * @param string                     $consolePath       path to bin/console e.g. "/var/www/project/bin/console"
@@ -123,6 +125,11 @@ abstract class AbstractCronJobService implements CronJobServiceInterface, CronJo
         return true;
     }
 
+    public function setProcessTimeout(?float $processTimeout): void
+    {
+        $this->processTimeout = $processTimeout;
+    }
+
     /**
      * @param CronJobInterface $cronJob
      *
@@ -138,7 +145,7 @@ abstract class AbstractCronJobService implements CronJobServiceInterface, CronJo
         $processParts[] = $this->consolePath;
         $processParts[] = $cronJob->getCommand();
 
-        return new Process($processParts);
+        return new Process($processParts, timeout: $this->processTimeout);
     }
 
     /**
@@ -195,6 +202,7 @@ abstract class AbstractCronJobService implements CronJobServiceInterface, CronJo
     protected function checkRunning(array $processes): void
     {
         while ($processes !== []) {
+            $nextCheck = microtime(true) + $this->checkInterval / 1_000_000;
             foreach ($processes as $index => $running) {
                 $process = $running->getProcess();
                 $report = $running->getReport();
@@ -202,6 +210,7 @@ abstract class AbstractCronJobService implements CronJobServiceInterface, CronJo
                 try {
                     if ($process->isRunning()) {
                         $process->checkTimeout();
+                        $nextCheck = $this->getNextProcessCheck($process, $nextCheck);
                         continue;
                     }
 
@@ -228,9 +237,25 @@ abstract class AbstractCronJobService implements CronJobServiceInterface, CronJo
             }
 
             if ($processes !== []) {
-                usleep($this->checkInterval);
+                usleep(max(0, (int) ceil(($nextCheck - microtime(true)) * 1_000_000)));
             }
         }
+    }
+
+    private function getNextProcessCheck(Process $process, float $nextCheck): float
+    {
+        $timeout = $process->getTimeout();
+        if ($timeout !== null) {
+            $nextCheck = min($nextCheck, $process->getStartTime() + $timeout);
+        }
+
+        $idleTimeout = $process->getIdleTimeout();
+        if ($idleTimeout !== null) {
+            $lastOutput = $process->getLastOutputTime() ?? $process->getStartTime();
+            $nextCheck = min($nextCheck, $lastOutput + $idleTimeout);
+        }
+
+        return $nextCheck;
     }
 
     private function getProcessOutput(Process $process): string

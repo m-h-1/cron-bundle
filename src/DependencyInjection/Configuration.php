@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace MH1\CronBundle\DependencyInjection;
 
 use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
-use Symfony\Component\Config\Definition\Builder\BooleanNodeDefinition;
+use Symfony\Component\Config\Definition\Builder\IntegerNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\ScalarNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
@@ -27,6 +27,9 @@ class Configuration implements ConfigurationInterface
         $cronjobCheckIntervalNode = new ScalarNodeDefinition('check_interval');
         $cronjobCheckIntervalNode->defaultValue(1000);
 
+        $cronjobProcessTimeoutNode = new IntegerNodeDefinition('process_timeout');
+        $cronjobProcessTimeoutNode->min(0)->defaultValue(0);
+
         $cronjobExecutionTimeZoneNode = new ScalarNodeDefinition('execution_time_zone');
         $cronjobExecutionTimeZoneNode->defaultNull();
 
@@ -41,6 +44,7 @@ class Configuration implements ConfigurationInterface
         $rootNode->append($cronjobServiceClassNode);
         $rootNode->append($cronjobLogServiceClassNode);
         $rootNode->append($cronjobCheckIntervalNode);
+        $rootNode->append($cronjobProcessTimeoutNode);
         $rootNode->append($cronjobExecutionTimeZoneNode);
         $rootNode->append($cronjobLockPrefixNode);
         $rootNode->append($cronjobPhpExecutablePathNode);

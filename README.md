@@ -56,8 +56,8 @@ explicit list remain manual runs.
 
 The runner prints job failures and continues with the other jobs. Use `bin/console mh1:cron:run --strict`
 to return a non-zero status if any job fails. Invalid schedules appear in the command output. Process
-timeouts are enforced during polling and recorded in the report with exit code `124`. The default
-process timeout is 60 seconds.
+timeouts are opt-in through `process_timeout` and are recorded in the report with exit code `124`.
+By default, jobs can run until they finish.
 
 ### Stalled job executions
 
@@ -166,6 +166,7 @@ mh1_cron:
     service: null # override job service with a custom service
     log_service: null # override logging service
     check_interval: 1000 # milliseconds to wait between the checks if a process is running (must be greater than 1)
+    process_timeout: 0 # maximum process runtime in whole seconds, 0 allows unlimited runtime
     execution_time_zone: null # use a custom time zone for job scheduling, the default is the PHP default timezone
     lock_prefix: '' # use a prefix for cronjob logging, the default is empty string
     php_executable_path: null # use a custom path to php executable. e.g. /usr/local/php/bin/php

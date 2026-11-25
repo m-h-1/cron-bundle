@@ -8,6 +8,7 @@ use DateTime;
 use DateTimeInterface;
 use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
+use MH1\CronBundle\DependencyInjection\MH1CronExtension;
 use MH1\CronBundle\Entity\Mh1CronJob;
 use MH1\CronBundle\Entity\Mh1CronJobReport;
 use MH1\CronBundle\Entity\Mh1CronJobSlot;
@@ -20,6 +21,7 @@ use MH1\CronBundle\Service\DoctrineCronJobService;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Ramsey\Uuid\Uuid;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 class DoctrineCronJobServiceTest extends TestCase
 {
@@ -291,5 +293,15 @@ class DoctrineCronJobServiceTest extends TestCase
         $process = $service->createProcess($cronJob);
 
         self::assertSame($expectedPath, $process->getCommandLine());
+        self::assertNull($process->getTimeout());
+    }
+
+    public function testBundleConfiguresProcessTimeout(): void
+    {
+        $container = new ContainerBuilder();
+        (new MH1CronExtension())->load([['process_timeout' => 90]], $container);
+
+        $runner = $container->getDefinition('mh1.cronjob.service');
+        self::assertSame([['setProcessTimeout', [90]]], $runner->getMethodCalls());
     }
 }

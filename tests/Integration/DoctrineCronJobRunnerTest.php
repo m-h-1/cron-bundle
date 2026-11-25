@@ -6,6 +6,7 @@ namespace MH1\CronBundle\Tests\Integration;
 use Closure;
 use DateTime;
 use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Tools\SchemaTool;
 use MH1\CronBundle\Command\CronRunCommand;
@@ -97,6 +98,56 @@ class DoctrineCronJobRunnerTest extends DoctrineTestCase
             $otherRunner->execute();
             self::assertSame(1, $manager->getRepository(Mh1CronJobReport::class)->count([]));
             self::assertSame(2, $manager->getRepository(Mh1CronJobSlot::class)->count([]));
+        } finally {
+            $otherManager?->getConnection()->close();
+            $manager?->getConnection()->close();
+            unlink($database);
+        }
+    }
+
+    public function testRunnerContinuesWhenAScheduledJobIsDeletedBeforeItsClaim(): void
+    {
+        $database = tempnam(sys_get_temp_dir(), 'mh1-cron-');
+        self::assertIsString($database);
+        $manager = null;
+        $otherManager = null;
+        try {
+            $manager = $this->createEntityManager($database);
+            $this->createSchema($manager);
+            $removed = $this->addJob($manager, 'removed');
+            $remaining = $this->addJob($manager, 'success');
+            $otherManager = $this->createEntityManager($database);
+
+            $runner = new class (
+                new DoctrineCronJobLogService($manager),
+                $manager,
+                __DIR__ . '/console-fixture.php',
+                10,
+                'UTC',
+                PHP_BINARY
+            ) extends DoctrineCronJobService {
+                public Closure $afterSelection;
+
+                public function getScheduledJobs(?DateTimeInterface $scheduleDateTime = null): array
+                {
+                    $jobs = parent::getScheduledJobs($scheduleDateTime);
+                    ($this->afterSelection)();
+
+                    return $jobs;
+                }
+            };
+            $runner->afterSelection = static function () use ($otherManager, $removed): void {
+                $job = $otherManager->find(Mh1CronJob::class, $removed->getId());
+                self::assertInstanceOf(Mh1CronJob::class, $job);
+                $otherManager->remove($job);
+                $otherManager->flush();
+            };
+            $runner->execute();
+
+            self::assertSame([], $runner->getFailures());
+            self::assertSame(1, $manager->getRepository(Mh1CronJobSlot::class)->count([]));
+            self::assertCount(1, $remaining->getReports());
+            self::assertSame(Command::SUCCESS, $remaining->getReports()->first()->getExitCode());
         } finally {
             $otherManager?->getConnection()->close();
             $manager?->getConnection()->close();
@@ -332,6 +383,30 @@ class DoctrineCronJobRunnerTest extends DoctrineTestCase
         self::assertSame(Command::SUCCESS, $tester->execute([]));
         self::assertCount(1, $timeout->getReports());
         self::assertCount(1, $failure->getReports());
+    }
+
+    public function testConfiguredTimeoutIsCheckedBeforeTheRegularPollingInterval(): void
+    {
+        $manager = $this->createEntityManager();
+        $this->createSchema($manager);
+        $job = $this->addJob($manager, 'timeout');
+        $runner = new DoctrineCronJobService(
+            new DoctrineCronJobLogService($manager),
+            $manager,
+            __DIR__ . '/console-fixture.php',
+            4000,
+            'UTC',
+            PHP_BINARY
+        );
+        $runner->setProcessTimeout(1);
+        $tester = new CommandTester(new CronRunCommand($runner));
+
+        self::assertSame(Command::FAILURE, $tester->execute(['--strict' => true]));
+        self::assertCount(1, $job->getReports());
+        $report = $job->getReports()->first();
+        self::assertSame(DoctrineCronJobService::TIMEOUT_EXIT_CODE, $report->getExitCode());
+        self::assertStringContainsString('before timeout', $report->getOutput());
+        self::assertStringNotContainsString('after timeout', $report->getOutput());
     }
 
     private function createSchema(EntityManager $manager): void

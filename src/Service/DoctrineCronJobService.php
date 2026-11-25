@@ -7,6 +7,8 @@ use Cron\CronExpression;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
@@ -140,8 +142,19 @@ class DoctrineCronJobService extends AbstractCronJobService
                 'cron_job_id' => $job->getId(),
                 'scheduled_minute' => DateTimeHelper::getEpochMinute($scheduledTime),
             ], ['uuid', Types::INTEGER]);
-        } catch (UniqueConstraintViolationException) {
+        } catch (UniqueConstraintViolationException | ForeignKeyConstraintViolationException) {
+            // Another runner claimed the slot, or the job was deleted after selection.
             return false;
+        } catch (DriverException $exception) {
+            // DBAL 2 can report a SQLite foreign key violation as a generic integrity error.
+            if ($exception->getSQLState() === '23000') {
+                $jobs = $this->entityManager->getRepository(Mh1CronJob::class);
+                if ($jobs->count(['id' => $job->getId()]) === 0) {
+                    return false;
+                }
+            }
+
+            throw $exception;
         }
 
         return true;
