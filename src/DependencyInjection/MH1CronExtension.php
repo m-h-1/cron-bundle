@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace MH1\CronBundle\DependencyInjection;
 
 use Exception;
+use MH1\CronBundle\Service\AbstractCronJobService;
+use MH1\CronBundle\Service\DoctrineCronJobService;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -44,6 +46,12 @@ class MH1CronExtension extends Extension implements PrependExtensionInterface
             $container->setParameter('cronjob.check_interval', $config['check_interval']);
         }
 
+        $serviceClass = $config['service'] ?? DoctrineCronJobService::class;
+        if ($config['process_timeout'] > 0 && is_a($serviceClass, AbstractCronJobService::class, true)) {
+            $container->getDefinition('mh1.cronjob.service')
+                ->addMethodCall('setProcessTimeout', [$config['process_timeout']]);
+        }
+
         // overwrite parameter, if custom timezone is provided
         if (isset($config['execution_time_zone'])) {
             $container->setParameter('cronjob.execution_time_zone', $config['execution_time_zone']);
@@ -71,6 +79,7 @@ class MH1CronExtension extends Extension implements PrependExtensionInterface
 
         $filePath = __DIR__ . '/../../config/packages/doctrine.yaml';
         $config = Yaml::parseFile($filePath);
+        $config['doctrine']['orm']['mappings']['MH1CronBundle']['dir'] = \dirname(__DIR__) . '/Entity';
         $container->prependExtensionConfig('doctrine', $config['doctrine']);
     }
 }

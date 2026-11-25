@@ -3,61 +3,61 @@ declare(strict_types=1);
 
 namespace MH1\CronBundle\Entity;
 
+use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use MH1\CronBundle\Doctrine\UtcDateTimeImmutableType;
+use MH1\CronBundle\Helper\DateTimeHelper;
 use MH1\CronBundle\Model\CronJobInterface;
 use MH1\CronBundle\Model\CronJobReportInterface;
 use MH1\CronBundle\Repository\Mh1CronJobReportRepository;
 
-/**
- * @ORM\Entity(repositoryClass=Mh1CronJobReportRepository::class)
- */
+#[ORM\Entity(repositoryClass: Mh1CronJobReportRepository::class)]
 class Mh1CronJobReport implements CronJobReportInterface
 {
     /**
      * @var int
-     *
-     * @ORM\Column(type="integer")
-     * @ORM\Id
-     * @ORM\GeneratedValue(strategy="IDENTITY")
      */
+    #[ORM\Column(type: 'integer')]
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     private $id;
 
     /**
      * @var CronJobInterface
-     * @ORM\ManyToOne(targetEntity=Mh1CronJob::class, inversedBy="cronJobReports", cascade={"persist", "remove"})
-     * @ORM\JoinColumn(nullable=false)
      */
+    #[ORM\ManyToOne(targetEntity: Mh1CronJob::class, inversedBy: 'reports', cascade: ['persist'])]
+    #[ORM\JoinColumn(nullable: false)]
     private $cronJob;
 
     /**
-     * @var DateTimeInterface
-     * @ORM\Column(type="datetime")
+     * @var DateTimeImmutable
      */
+    #[ORM\Column(type: UtcDateTimeImmutableType::NAME)]
     private $startTime;
 
     /**
-     * @var DateTimeInterface|null
-     * @ORM\Column(type="datetime", nullable=true)
+     * @var DateTimeImmutable|null
      */
+    #[ORM\Column(type: UtcDateTimeImmutableType::NAME, nullable: true)]
     private $endTime;
 
     /**
      * @var int|null
-     * @ORM\Column(type="integer", nullable=true)
      */
+    #[ORM\Column(type: 'integer', nullable: true)]
     private $exitCode;
 
     /**
      * @var string|null
-     * @ORM\Column(type="text", nullable=true)
      */
+    #[ORM\Column(type: 'text', nullable: true)]
     private $output;
 
     /**
      * @var int|null
-     * @ORM\Column(type="integer", nullable=true)
      */
+    #[ORM\Column(type: 'integer', nullable: true)]
     private $duration;
 
     /**
@@ -69,7 +69,7 @@ class Mh1CronJobReport implements CronJobReportInterface
         $this->cronJob = $cronJob;
         $cronJob->getReports()->add($this)
         ;
-        $this->startTime = $startTime;
+        $this->startTime = DateTimeHelper::toUTC($startTime);
     }
 
     /**
@@ -125,7 +125,7 @@ class Mh1CronJobReport implements CronJobReportInterface
      */
     public function setStartTime(DateTimeInterface $startTime): CronJobReportInterface
     {
-        $this->startTime = $startTime;
+        $this->startTime = DateTimeHelper::toUTC($startTime);
         return $this;
     }
 
@@ -144,7 +144,7 @@ class Mh1CronJobReport implements CronJobReportInterface
      */
     public function setEndTime(?DateTimeInterface $endTime): CronJobReportInterface
     {
-        $this->endTime = $endTime;
+        $this->endTime = $endTime === null ? null : DateTimeHelper::toUTC($endTime);
         return $this;
     }
 

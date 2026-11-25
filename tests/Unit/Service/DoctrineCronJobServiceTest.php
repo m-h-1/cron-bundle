@@ -8,16 +8,20 @@ use DateTime;
 use DateTimeInterface;
 use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
+use MH1\CronBundle\DependencyInjection\MH1CronExtension;
 use MH1\CronBundle\Entity\Mh1CronJob;
 use MH1\CronBundle\Entity\Mh1CronJobReport;
+use MH1\CronBundle\Entity\Mh1CronJobSlot;
 use MH1\CronBundle\Helper\DateTimeHelper;
 use MH1\CronBundle\Repository\Mh1CronJobReportRepository;
 use MH1\CronBundle\Repository\Mh1CronJobRepository;
+use MH1\CronBundle\Repository\Mh1CronJobSlotRepository;
 use MH1\CronBundle\Service\CronJobLogServiceInterface;
 use MH1\CronBundle\Service\DoctrineCronJobService;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Ramsey\Uuid\Uuid;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 class DoctrineCronJobServiceTest extends TestCase
 {
@@ -103,8 +107,9 @@ class DoctrineCronJobServiceTest extends TestCase
     {
         $lastExecution = null;
         if (count($jobs) !== 0) {
-            $lastExecution = new Mh1CronJobReport(current($jobs), new DateTime());
-            $lastExecution->setEndTime((new DateTime())->sub(new DateInterval('P5D')));
+            $previousStart = (new DateTime())->sub(new DateInterval('P5D'));
+            $lastExecution = new Mh1CronJobReport(current($jobs), $previousStart);
+            $lastExecution->setEndTime($previousStart);
         }
 
         $repoMock = $this->createMock(Mh1CronJobRepository::class);
@@ -114,23 +119,19 @@ class DoctrineCronJobServiceTest extends TestCase
         ;
 
         $reportRepoMock = $this->createMock(Mh1CronJobReportRepository::class);
-        $reportRepoMock->method('findLastExecutionByJob')
+        $reportRepoMock->method('findLastExecutionByStart')
                        ->willReturn($lastExecution)
         ;
+        $slotRepoMock = $this->createMock(Mh1CronJobSlotRepository::class);
+        $slotRepoMock->method('findLatestScheduledMinute')->willReturn(null);
 
         $this->entityManagerMock->expects(self::exactly($repoCalls))
                                 ->method('getRepository')
-                                ->willReturnCallback(
-                                    static function (string $className) use ($repoMock, $reportRepoMock) {
-                                        if ($className === Mh1CronJob::class) {
-                                            return $repoMock;
-                                        }
-                                        if ($className === Mh1CronJobReport::class) {
-                                            return $reportRepoMock;
-                                        }
-                                        return null;
-                                    }
-                                )
+                                ->willReturnMap([
+                                    [Mh1CronJob::class, $repoMock],
+                                    [Mh1CronJobReport::class, $reportRepoMock],
+                                    [Mh1CronJobSlot::class, $slotRepoMock],
+                                ])
         ;
     }
 
@@ -226,7 +227,7 @@ class DoctrineCronJobServiceTest extends TestCase
         array              $jobs,
         array              $expectedScheduledJobs,
         ?DateTimeInterface $scheduleDateTime = null,
-        int                $expectedGetRepoCalls = 2
+        int                $expectedGetRepoCalls = 3
     ): void {
         $this->setUpActiveJobMocks($jobs, $expectedGetRepoCalls);
         $scheduledJobs = $this->service->getScheduledJobs($scheduleDateTime);
@@ -258,9 +259,9 @@ class DoctrineCronJobServiceTest extends TestCase
             ],
             'php path'         => [
                 '/var/www/app/bin/console',
-                '/usr/local/php81/bin/php',
+                '/usr/local/php/bin/php',
                 $job,
-                '\'/usr/local/php81/bin/php\' \'/var/www/app/bin/console\' \'app:test:runner\''
+                '\'/usr/local/php/bin/php\' \'/var/www/app/bin/console\' \'app:test:runner\''
             ],
         ];
     }
@@ -292,5 +293,15 @@ class DoctrineCronJobServiceTest extends TestCase
         $process = $service->createProcess($cronJob);
 
         self::assertSame($expectedPath, $process->getCommandLine());
+        self::assertNull($process->getTimeout());
+    }
+
+    public function testBundleConfiguresProcessTimeout(): void
+    {
+        $container = new ContainerBuilder();
+        (new MH1CronExtension())->load([['process_timeout' => 90]], $container);
+
+        $runner = $container->getDefinition('mh1.cronjob.service');
+        self::assertSame([['setProcessTimeout', [90]]], $runner->getMethodCalls());
     }
 }

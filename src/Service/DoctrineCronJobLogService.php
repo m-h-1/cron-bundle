@@ -28,7 +28,7 @@ class DoctrineCronJobLogService implements CronJobLogServiceInterface
     public function logStart(CronJobInterface $cronJob): CronJobReportInterface
     {
         /** @var Mh1CronJob $cronJob */
-        $runReport = new Mh1CronJobReport($cronJob, DateTimeHelper::getUTCDateTime());
+        $runReport = new Mh1CronJobReport($cronJob, DateTimeHelper::getUTCDateTimeImmutable());
 
         $this->entityManager->persist($runReport);
         $this->entityManager->flush();
@@ -44,7 +44,7 @@ class DoctrineCronJobLogService implements CronJobLogServiceInterface
         ?int                   $exitCode,
         string                 $output
     ): CronJobReportInterface {
-        $endTime = DateTimeHelper::getUTCDateTime();
+        $endTime = DateTimeHelper::getUTCDateTimeImmutable();
         $runReport->setEndTime($endTime);
         $runReport->setExitCode($exitCode);
         $runReport->setOutput($output);
