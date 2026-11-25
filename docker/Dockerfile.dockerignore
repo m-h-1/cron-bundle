@@ -1,0 +1,8 @@
+*
+!composer.json
+!phpunit.xml.dist
+!phpcs.xml.dist
+!phpstan.neon
+!config/
+!src/
+!tests/

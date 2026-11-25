@@ -3,8 +3,11 @@ declare(strict_types=1);
 
 namespace MH1\CronBundle\Entity;
 
+use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
+use MH1\CronBundle\Doctrine\UtcDateTimeImmutableType;
+use MH1\CronBundle\Helper\DateTimeHelper;
 use MH1\CronBundle\Model\CronJobInterface;
 use MH1\CronBundle\Model\CronJobReportInterface;
 use MH1\CronBundle\Repository\Mh1CronJobReportRepository;
@@ -23,20 +26,20 @@ class Mh1CronJobReport implements CronJobReportInterface
     /**
      * @var CronJobInterface
      */
-    #[ORM\ManyToOne(targetEntity: Mh1CronJob::class, inversedBy: 'cronJobReports', cascade: ['persist', 'remove'])]
+    #[ORM\ManyToOne(targetEntity: Mh1CronJob::class, inversedBy: 'reports', cascade: ['persist'])]
     #[ORM\JoinColumn(nullable: false)]
     private $cronJob;
 
     /**
-     * @var DateTimeInterface
+     * @var DateTimeImmutable
      */
-    #[ORM\Column(type: 'datetime')]
+    #[ORM\Column(type: UtcDateTimeImmutableType::NAME)]
     private $startTime;
 
     /**
-     * @var DateTimeInterface|null
+     * @var DateTimeImmutable|null
      */
-    #[ORM\Column(type: 'datetime', nullable: true)]
+    #[ORM\Column(type: UtcDateTimeImmutableType::NAME, nullable: true)]
     private $endTime;
 
     /**
@@ -66,7 +69,7 @@ class Mh1CronJobReport implements CronJobReportInterface
         $this->cronJob = $cronJob;
         $cronJob->getReports()->add($this)
         ;
-        $this->startTime = $startTime;
+        $this->startTime = DateTimeHelper::toUTC($startTime);
     }
 
     /**
@@ -122,7 +125,7 @@ class Mh1CronJobReport implements CronJobReportInterface
      */
     public function setStartTime(DateTimeInterface $startTime): CronJobReportInterface
     {
-        $this->startTime = $startTime;
+        $this->startTime = DateTimeHelper::toUTC($startTime);
         return $this;
     }
 
@@ -141,7 +144,7 @@ class Mh1CronJobReport implements CronJobReportInterface
      */
     public function setEndTime(?DateTimeInterface $endTime): CronJobReportInterface
     {
-        $this->endTime = $endTime;
+        $this->endTime = $endTime === null ? null : DateTimeHelper::toUTC($endTime);
         return $this;
     }
 

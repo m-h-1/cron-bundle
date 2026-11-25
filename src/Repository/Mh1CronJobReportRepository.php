@@ -21,13 +21,23 @@ class Mh1CronJobReportRepository extends EntityRepository
      */
     public function findLastExecutionByJob(Mh1CronJob $cronJob): ?Mh1CronJobReport
     {
-        return $this->createQueryBuilder('cjr')
-                    ->andWhere('cjr.cronJob = :cronJob')
-                    ->setParameter('cronJob', $cronJob)
-                    ->orderBy('cjr.endTime', 'DESC')
-                    ->setMaxResults(1)
-                    ->getQuery()
-                    ->getOneOrNullResult()
-        ;
+        return $this->findLastCompletedReport($cronJob, 'report.endTime DESC');
+    }
+
+    public function findLastExecutionByStart(Mh1CronJob $cronJob): ?Mh1CronJobReport
+    {
+        return $this->findLastCompletedReport($cronJob, 'report.startTime DESC');
+    }
+
+    /** @param 'report.startTime DESC'|'report.endTime DESC' $orderBy */
+    private function findLastCompletedReport(Mh1CronJob $cronJob, string $orderBy): ?Mh1CronJobReport
+    {
+        return $this->getEntityManager()->createQuery(
+            'SELECT report FROM ' . Mh1CronJobReport::class . ' report'
+            . ' WHERE report.cronJob = :cronJob AND report.endTime IS NOT NULL'
+            . ' ORDER BY ' . $orderBy
+        )->setParameter('cronJob', $cronJob)
+            ->setMaxResults(1)
+            ->getOneOrNullResult();
     }
 }

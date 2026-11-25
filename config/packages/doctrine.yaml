@@ -2,6 +2,7 @@ doctrine:
   dbal:
     types:
       uuid: 'Ramsey\Uuid\Doctrine\UuidType'
+      mh1_cron_utc_datetime_immutable: 'MH1\CronBundle\Doctrine\UtcDateTimeImmutableType'
 
   orm:
     mappings:

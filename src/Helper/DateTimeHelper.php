@@ -5,6 +5,7 @@ namespace MH1\CronBundle\Helper;
 
 use DateTime;
 use DateTimeImmutable;
+use DateTimeInterface;
 use DateTimeZone;
 
 class DateTimeHelper
@@ -14,13 +15,7 @@ class DateTimeHelper
      */
     public static function getUTCDateTime(): DateTime
     {
-        $timezone = new DateTimeZone('UTC');
-        $format = 'Y-m-d H:i:s';
-
-        /** @var DateTime $dateTimeObject */
-        $dateTimeObject = DateTime::createFromFormat($format, date($format));
-
-        return $dateTimeObject->setTimezone($timezone);
+        return (new DateTime('@' . time()))->setTimezone(new DateTimeZone('UTC'));
     }
 
     /**
@@ -28,12 +23,16 @@ class DateTimeHelper
      */
     public static function getUTCDateTimeImmutable(): DateTimeImmutable
     {
-        $timezone = new DateTimeZone('UTC');
-        $format = 'Y-m-d H:i:s';
+        return (new DateTimeImmutable('@' . time()))->setTimezone(new DateTimeZone('UTC'));
+    }
 
-        /** @var DateTimeImmutable $dateTimeObject */
-        $dateTimeObject = DateTimeImmutable::createFromFormat($format, date($format));
+    public static function toUTC(DateTimeInterface $time): DateTimeImmutable
+    {
+        return DateTimeImmutable::createFromInterface($time)->setTimezone(new DateTimeZone('UTC'));
+    }
 
-        return $dateTimeObject->setTimezone($timezone);
+    public static function getEpochMinute(DateTimeInterface $time): int
+    {
+        return (int) floor($time->getTimestamp() / 60);
     }
 }

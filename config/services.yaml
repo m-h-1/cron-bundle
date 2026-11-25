@@ -9,7 +9,7 @@ services:
   # this creates a service per class whose id is the fully-qualified class name
   MH1\CronBundle\:
     resource: '../src/*'
-    exclude: '../src/{DependencyInjection,Entity,Tests}'
+    exclude: '../src/{DependencyInjection,Doctrine,Entity,Tests}'
 
   mh1.cronjob.log.service:
     class: '%cronjob.log.service%'

@@ -3,9 +3,9 @@
 
 # cron-bundle
 
-Simple Symfony bundle to schedule commands.
-Uses [symfony/lock](https://symfony.com/doc/current/components/lock.html) to make sure a specific command can't run more than once at the same time. 
-Different commands are executed in parallel.
+Simple Symfony bundle to schedule commands. Jobs run in parallel. Commands that extend
+`AbstractCronCommand` use [Symfony Lock](https://symfony.com/doc/current/components/lock.html)
+to prevent overlapping executions of that command.
 
 ## TOC
 
@@ -18,7 +18,9 @@ Different commands are executed in parallel.
   * [Step 2: Enable the bundle](#step-2-enable-the-bundle)
   * [Step 3: Create DB tables](#step-3-create-db-tables)
   * [Step 4: Add to crontab](#step-4-add-to-crontab)
+* [Upgrading an existing installation](#upgrading-an-existing-installation)
 * [Config](#config)
+* [Local tests with Docker](#local-tests-with-docker)
 
 
 ## Usage
@@ -47,18 +49,30 @@ VALUES ('d63a6a70-0b56-4b0d-bdfb-06e4c7e7a2eb', 'Symfony Help Command', 'display
 $ bin/console mh1:cron:run
 ```
 
+With the Doctrine runner, each scheduled minute is reserved in the database before its child process
+starts. The reservation survives failed runs, interrupted runners and deletion of individual reports.
+The runner requires an auto-commit connection for scheduled runs. Calls to `execute($jobs)` with an
+explicit list remain manual runs.
+
+The runner prints job failures and continues with the other jobs. Use `bin/console mh1:cron:run --strict`
+to return a non-zero status if any job fails. Invalid schedules appear in the command output. Process
+timeouts are enforced during polling and recorded in the report with exit code `124`. The default
+process timeout is 60 seconds.
+
 ### Stalled job executions
 
-**This only works for jobs that ran at least once in the past!**
+With `execute_stalled` enabled, the Doctrine runner catches up once for the latest missed occurrence.
+For example, if an hourly job last ran at 08:00 and the runner comes back at 11:15, it runs the
+11:00 occurrence. If the runner comes back during a regularly scheduled minute, it runs that
+occurrence. Disabled jobs wait until re-enabled.
 
-The Doctrine integration also provides the possibility to execute stalled jobs. 
+The runner uses the last reserved scheduled minute regardless of how long that execution took or
+how it ended. For jobs with older reports but no reservations, it uses the most recent completed
+report's start time. A job without a reservation or completed report starts at its first regular
+occurrence. Jobs with `execute_stalled` disabled only run in their regular scheduled minutes.
 
-A stalled job is a job that was supposed to be executed at a specific time but was not executed due to being temporarily disabled or 
-`bin/console mh1:cron:run` was not run, but should be run once the job is enabled again.
-
-For example, you have a job that runs every night at 1 AM, but for some reason (e.g. server maintenance) 
-the jobs are not executed between 0:30 AM and 3 AM.
-If `executeStalled` (`execute_stalled` DB column) is set to true, the job will be executed after the maintenance window at 3 AM.
+Cron expressions use `execution_time_zone`. Report times are written and read in UTC, and two
+occurrences in a repeated local hour have distinct UTC reservations.
 
 ## Installation
 
@@ -117,6 +131,14 @@ CREATE TABLE mh1_cron_job_report
 ) COLLATE = utf8mb4_unicode_ci;
 
 CREATE INDEX idx_a297993479099ed8 ON mh1_cron_job_report (cron_job_id);
+
+CREATE TABLE mh1_cron_job_slot
+(
+    cron_job_id      CHAR(36) NOT NULL,
+    scheduled_minute INT      NOT NULL,
+    PRIMARY KEY (cron_job_id, scheduled_minute),
+    FOREIGN KEY (cron_job_id) REFERENCES mh1_cron_job (id) ON DELETE CASCADE
+) COLLATE = utf8mb4_unicode_ci;
 ```
 
 ### Step 4: Add to crontab
@@ -126,6 +148,15 @@ Add the command to crontab and replace PATH_TO_APPLICATION with the path to your
 ```console
 * * * * *   PATH_TO_APPLICATION/bin/console mh1:cron:run
 ```
+
+## Upgrading an existing installation
+
+Generate and apply a Doctrine migration before running the new scheduler. The migration adds
+`mh1_cron_job_slot`, which uses the existing job ID and the number of minutes since the Unix epoch
+as its primary key. Existing report timestamps are interpreted as UTC, as written by the bundle's
+logger. Installations that used custom writers to store local clock times need to convert those values
+to UTC using the time zone they were written in. Installations that use raw MySQL SQL can add the
+table using the definition above.
 
 ## Config
 
@@ -199,4 +230,34 @@ mh1_cron:
 # config/packages/mh1_cron.yaml
 mh1_cron:
     php_executable_path: '/usr/local/php/bin/php'
+```
+
+## Local tests with Docker
+
+Use Docker Compose to build the test runner and run the test suite. Each run resolves Composer
+dependencies inside a fresh container for the selected PHP version. The host's `vendor/` and
+`composer.lock` are separate from the container.
+
+```sh
+docker compose run --build --rm test                # PHP 8.2 by default
+PHP_VERSION=8.5 docker compose run --build --rm test
+```
+
+To test the PHP 8.2–8.6 releases in sequence, stopping on the first failure, run the following.
+
+```sh
+(
+  for version in 8.2 8.3 8.4 8.5 8.6; do
+    PHP_VERSION="$version" docker compose run --build --rm test || exit 1
+  done
+)
+```
+
+To reproduce the CI check with the lowest dependency versions on PHP 8.2, run the following.
+Deprecations from the bundle and direct calls to deprecated APIs fail the check.
+
+```sh
+PHP_VERSION=8.2 docker compose run --build --rm \
+  -e 'SYMFONY_DEPRECATIONS_HELPER=max[self]=0&max[direct]=0&quiet[]=indirect' \
+  test sh -ec 'composer update --prefer-lowest --no-interaction --no-progress && composer run-script test'
 ```

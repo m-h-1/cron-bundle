@@ -7,37 +7,21 @@ use Symfony\Component\Process\Process;
 
 class CronJobProcess
 {
-    /**
-     * @var Process<callable>
-     */
-    private $process;
+    private Process $process;
 
-    /**
-     * @var CronJobReportInterface
-     */
-    private $report;
+    private CronJobReportInterface $report;
 
-    /**
-     * @param Process<callable>      $process
-     * @param CronJobReportInterface $log
-     */
     public function __construct(Process $process, CronJobReportInterface $log)
     {
         $this->process = $process;
         $this->report = $log;
     }
 
-    /**
-     * @return Process<callable>
-     */
     public function getProcess(): Process
     {
         return $this->process;
     }
 
-    /**
-     * @return CronJobReportInterface
-     */
     public function getReport(): CronJobReportInterface
     {
         return $this->report;

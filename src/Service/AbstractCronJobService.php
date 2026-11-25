@@ -4,17 +4,26 @@ declare(strict_types=1);
 namespace MH1\CronBundle\Service;
 
 use Cron\CronExpression;
+use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
+use Exception;
 use InvalidArgumentException;
+use MH1\CronBundle\Command\AbstractCronCommand;
 use MH1\CronBundle\Helper\DateTimeHelper;
 use MH1\CronBundle\Model\CronJobInterface;
 use MH1\CronBundle\Model\CronJobProcess;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Process\Exception\RuntimeException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
-abstract class AbstractCronJobService implements CronJobServiceInterface
+abstract class AbstractCronJobService implements CronJobServiceInterface, CronJobFailureProviderInterface
 {
+    public const TIMEOUT_EXIT_CODE = 124;
+
+    /** @var list<string> */
+    private array $failures = [];
+
     /**
      * @var CronJobLogServiceInterface
      */
@@ -43,8 +52,7 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
     /**
      * @param CronJobLogServiceInterface $cronJobLogService
      * @param string                     $consolePath       path to bin/console e.g. "/var/www/project/bin/console"
-     * @param int                        $checkInterval     microseconds to wait between the check if a
-     *                                                      process is running (must be greater than 10)
+     * @param int                        $checkInterval     milliseconds between process checks (greater than 1)
      * @param string|null                $executionTimeZone name of the timezone to check for the runtime
      *                                                      if null php default timezone is used
      * @param string|null                $phpExecutablePath path to php executable e.g. /usr/local/php/bin/php
@@ -75,24 +83,44 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
      */
     public function execute(?iterable $cronJobs = null): void
     {
-        $cronJobs = $cronJobs ?? $this->getScheduledJobs();
+        $this->failures = [];
+        $scheduleTime = null;
+        if ($cronJobs === null) {
+            $scheduleTime = DateTimeHelper::getUTCDateTimeImmutable();
+            $cronJobs = $this->getScheduledJobs($scheduleTime);
+        }
 
         $processes = [];
         foreach ($cronJobs as $cronJob) {
+            if ($scheduleTime !== null && !$this->claimScheduledJob($cronJob, $scheduleTime)) {
+                continue;
+            }
+
             $log = $this->cronJobLogService->logStart($cronJob);
 
-            /** @var Process<callable> $process */
-            $process = $this->createProcess($cronJob);
             try {
+                $process = $this->createProcess($cronJob);
                 $process->start();
-            } catch (RuntimeException $exception) {
-                $this->cronJobLogService->logEnd($log, Command::FAILURE, $exception->getMessage());
+            } catch (Exception $exception) {
+                $message = $exception->getMessage();
+                $this->addFailure($cronJob, $message);
+                $this->cronJobLogService->logEnd($log, Command::FAILURE, $message);
                 continue;
             }
             $processes[] = new CronJobProcess($process, $log);
         }
 
         $this->checkRunning($processes);
+    }
+
+    public function getFailures(): array
+    {
+        return $this->failures;
+    }
+
+    protected function claimScheduledJob(CronJobInterface $job, DateTimeInterface $scheduleTime): bool
+    {
+        return true;
     }
 
     /**
@@ -120,14 +148,20 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
      */
     public function getScheduledJobs(?DateTimeInterface $scheduleDateTime = null): array
     {
+        $this->failures = [];
         $scheduleDateTime = $scheduleDateTime ?? DateTimeHelper::getUTCDateTimeImmutable();
-        $enabledJobs = $this->getEnabledJobs();
+        $scheduledJobs = [];
+        foreach ($this->getEnabledJobs() as $job) {
+            try {
+                if ($this->shouldJobRun($job, $scheduleDateTime)) {
+                    $scheduledJobs[] = $job;
+                }
+            } catch (InvalidArgumentException $exception) {
+                $this->addFailure($job, $exception->getMessage());
+            }
+        }
 
-        $scheduledJobs = array_filter($enabledJobs, function ($job) use ($scheduleDateTime) {
-            return $this->shouldJobRun($job, $scheduleDateTime);
-        });
-
-        return array_values($scheduledJobs);
+        return $scheduledJobs;
     }
 
     /**
@@ -143,9 +177,16 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
      */
     protected function shouldJobRun(CronJobInterface $job, ?DateTimeInterface $dateTime = null): bool
     {
-        $dateTime = $dateTime ?? DateTimeHelper::getUTCDateTime();
+        return $this->getScheduledTime($job, $dateTime ?? DateTimeHelper::getUTCDateTimeImmutable()) !== null;
+    }
+
+    protected function getScheduledTime(CronJobInterface $job, DateTimeInterface $time): ?DateTimeInterface
+    {
         $cron = new CronExpression($job->getSchedule());
-        return $cron->isDue($dateTime, $this->executionTimeZone);
+        $offset = (new DateTimeZone($this->executionTimeZone))->getOffset($time);
+        $localTime = new DateTimeImmutable('@' . ($time->getTimestamp() + $offset));
+
+        return $cron->isDue($localTime, 'UTC') ? $time : null;
     }
 
     /**
@@ -153,24 +194,56 @@ abstract class AbstractCronJobService implements CronJobServiceInterface
      */
     protected function checkRunning(array $processes): void
     {
-        $runningProcesses = [];
+        while ($processes !== []) {
+            foreach ($processes as $index => $running) {
+                $process = $running->getProcess();
+                $report = $running->getReport();
 
-        foreach ($processes as $process) {
-            if ($process->getProcess()->isRunning()) {
-                $runningProcesses[] = $process;
-                continue;
+                try {
+                    if ($process->isRunning()) {
+                        $process->checkTimeout();
+                        continue;
+                    }
+
+                    $exitCode = $process->getExitCode();
+                    $output = $this->getProcessOutput($process);
+                    if ($exitCode !== Command::SUCCESS && $exitCode !== AbstractCronCommand::SKIPPED) {
+                        $message = $exitCode === null
+                            ? 'Process did not return an exit code.'
+                            : sprintf('Process exited with code %d.', $exitCode);
+                        $this->addFailure($report->getCronJob(), $message);
+                    }
+                } catch (ProcessTimedOutException $exception) {
+                    $exitCode = self::TIMEOUT_EXIT_CODE;
+                    $this->addFailure($report->getCronJob(), $exception->getMessage());
+                    $output = $this->getProcessOutput($process) . PHP_EOL . $exception->getMessage();
+                } catch (Exception $exception) {
+                    $exitCode = Command::FAILURE;
+                    $output = $exception->getMessage();
+                    $this->addFailure($report->getCronJob(), $output);
+                }
+
+                $this->cronJobLogService->logEnd($report, $exitCode, $output);
+                unset($processes[$index]);
             }
 
-            $this->cronJobLogService->logEnd(
-                $process->getReport(),
-                $process->getProcess()->getExitCode(),
-                $process->getProcess()->getOutput() . PHP_EOL . PHP_EOL . $process->getProcess()->getErrorOutput()
-            );
+            if ($processes !== []) {
+                usleep($this->checkInterval);
+            }
+        }
+    }
+
+    private function getProcessOutput(Process $process): string
+    {
+        if ($process->isOutputDisabled()) {
+            return '';
         }
 
-        if (count($runningProcesses) > 0) {
-            usleep($this->checkInterval);
-            $this->checkRunning($runningProcesses);
-        }
+        return $process->getOutput() . PHP_EOL . PHP_EOL . $process->getErrorOutput();
+    }
+
+    private function addFailure(CronJobInterface $job, string $message): void
+    {
+        $this->failures[] = sprintf('%s: %s', $job->getCommand(), $message);
     }
 }
